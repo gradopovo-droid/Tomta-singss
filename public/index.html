@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Music API — Upload</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:650px;margin:32px auto;padding:0 16px;background:#111;color:#eee}
+main{border:1px solid #444;border-radius:16px;padding:20px}input,button{box-sizing:border-box;width:100%;padding:12px;margin:8px 0;border-radius:8px}
+input{background:#222;color:#eee;border:1px solid #555}button{background:#eee;color:#111;border:0;font-weight:700}
+small{color:#bbb}pre{white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<h1>My Music API</h1>
+<main>
+<p>Upload only audio you own or are licensed to distribute.</p>
+<label>Admin key</label>
+<input id="key" type="password" autocomplete="current-password" placeholder="Vercel UPLOAD_ADMIN_KEY">
+<label>Audio file</label>
+<input id="file" type="file" accept=".mp3,.m4a,.aac,.ogg,.wav,.flac,audio/*">
+<button id="upload">Upload audio</button>
+<pre id="status">Ready.</pre>
+</main>
+<script type="module">
+import { upload } from "https://esm.sh/@vercel/blob/client";
+const button = document.getElementById("upload");
+const status = document.getElementById("status");
+button.addEventListener("click", async () => {
+  const key = document.getElementById("key").value;
+  const file = document.getElementById("file").files[0];
+  if (!key) { status.textContent = "Enter your admin key."; return; }
+  if (!file) { status.textContent = "Choose an audio file first."; return; }
+  if (!/\.(mp3|m4a|aac|ogg|wav|flac)$/i.test(file.name)) {
+    status.textContent = "Unsupported file type."; return;
+  }
+  button.disabled = true;
+  status.textContent = "Uploading...";
+  try {
+    const result = await upload(file.name, file, {
+      access: "public",
+      handleUploadUrl: "/api/upload",
+      clientPayload: key
+    });
+    status.textContent = "Uploaded successfully!\nFile: " + result.pathname +
+      "\nSearch: /api/search?q=" + encodeURIComponent(file.name.replace(/\.[^.]+$/, "")) +
+      "\nDownload: /api/download?id=" + encodeURIComponent(result.pathname);
+  } catch (e) {
+    status.textContent = "Upload failed: " + (e?.message || "Unknown error") +
+      "\nCheck admin key, Blob connection, and file size.";
+  } finally { button.disabled = false; }
+});
+</script>
+</body>
+</html>
