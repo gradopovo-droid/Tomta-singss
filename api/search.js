@@ -1,81 +1,66 @@
-const json = (res, status, body) => {
-  res.status(status).setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  return res.end(JSON.stringify(body));
-};
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    return json(res, 405, {
+  const q = req.query.q?.trim();
+  const clientId = process.env.JAMENDO_CLIENT_ID;
+
+  if (!q) {
+    return res.status(400).json({
       success: false,
-      error: "Use GET"
+      error: "Song name missing"
     });
   }
 
-  const q = String(req.query?.q ?? "").trim();
-
-  if (!q || q.length > 120) {
-    return json(res, 400, {
+  if (!clientId) {
+    return res.status(500).json({
       success: false,
-      error: "Use /api/search?q=song-name"
+      error: "JAMENDO_CLIENT_ID environment variable missing"
     });
   }
 
   try {
-    const endpoint = new URL(
-      "https://saavn.sumit.co/api/search/songs"
-    );
-    endpoint.searchParams.set("query", q);
-
-    const response = await fetch(endpoint, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000)
+    const params = new URLSearchParams({
+      client_id: clientId,
+      format: "json",
+      namesearch: q,
+      limit: "10",
+      audioformat: "mp32",
+      order: "popularity_total"
     });
 
-    if (!response.ok) {
-      return json(res, 502, {
+    const response = await fetch(
+      `https://api.jamendo.com/v3.0/tracks/?${params}`
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || data.headers?.status === "failed") {
+      return res.status(502).json({
         success: false,
-        error: "Song search provider unavailable",
-        providerStatus: response.status
+        error: "Jamendo API request failed"
       });
     }
 
-    const data = await response.json();
-    const raw = data?.data?.results
-      ?? data?.results
-      ?? data?.data
-      ?? [];
-
-    const songs = (Array.isArray(raw) ? raw : []).map(song => ({
-      id: song.id ?? null,
-      title: song.name ?? song.title ?? "Unknown",
-      artists:
-        song.artists?.primary?.map(a => a.name).join(", ")
-        ?? song.primaryArtists
-        ?? song.singers
-        ?? "Unknown",
-      album: song.album?.name ?? song.album ?? null,
-      duration: song.duration ?? null,
-      image: song.image?.[2]?.url
-        ?? song.image?.[1]?.url
-        ?? song.image?.[0]?.url
-        ?? song.image
-        ?? null,
-      url: song.url ?? song.perma_url ?? null
+    const results = (data.results || []).map(track => ({
+      id: track.id,
+      name: track.name,
+      artist: track.artist_name,
+      image: track.album_image || track.image,
+      duration: track.duration,
+      audio: track.audio || null,
+      download: track.audiodownload || null,
+      source: "Jamendo"
     }));
 
-    return json(res, 200, {
+    return res.status(200).json({
       success: true,
       query: q,
-      count: songs.length,
-      results: songs
+      count: results.length,
+      results
     });
-  } catch (err) {
-    return json(res, 502, {
+  } catch (error) {
+    return res.status(500).json({
       success: false,
-      error: "Song search failed",
-      detail: err.message
+      error: "Audio search failed"
     });
   }
 }
